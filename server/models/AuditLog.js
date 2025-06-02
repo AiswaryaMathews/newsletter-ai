@@ -1,10 +1,12 @@
 const mongoose = require('mongoose');
 
-const logSchema = new mongoose.Schema({
-  action: String,
-  newsletterId: { type: mongoose.Schema.Types.ObjectId, ref: 'Newsletter' },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  timestamp: { type: Date, default: Date.now }
+const auditLogSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  action: { type: String, required: true }, // e.g., "created", "edited", "deleted"
+  targetType: { type: String, required: true }, // e.g., "Newsletter"
+  targetId: { type: mongoose.Schema.Types.ObjectId },
+  timestamp: { type: Date, default: Date.now },
+  details: { type: String }
 });
 
-module.exports = mongoose.model('AuditLog', logSchema);
+module.exports = mongoose.model('AuditLog', auditLogSchema);

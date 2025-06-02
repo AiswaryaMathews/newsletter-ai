@@ -1,15 +1,29 @@
-const AuditLog = require('../models/AuditLog');
+const Log = require('../models/Log');
 
-// Get all logs for a particular newsletter
-exports.getLogsForNewsletter = async (req, res) => {
+exports.createLog = async (req, res) => {
   try {
-    const { id } = req.params; // newsletter ID
-
-    const logs = await AuditLog.find({ newsletterId: id }).populate('userId', 'name role');
-
-    res.status(200).json(logs);
+    const log = new Log({ ...req.body, user: req.user.id });
+    await log.save();
+    res.status(201).json(log);
   } catch (error) {
-    console.error('Error fetching logs:', error);
-    res.status(500).json({ message: 'Failed to fetch audit logs' });
+    res.status(500).json({ message: 'Failed to create log', error });
+  }
+};
+
+exports.getAllLogs = async (req, res) => {
+  try {
+    const logs = await Log.find().populate('user', 'email role');
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch logs', error });
+  }
+};
+
+exports.getUserLogs = async (req, res) => {
+  try {
+    const logs = await Log.find({ user: req.user.id });
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch your logs', error });
   }
 };
