@@ -1,66 +1,71 @@
 const Newsletter = require('../models/Newsletter');
 const AuditLog = require('../models/AuditLog');
 
+const isAdmin = (req) => req.user.role === 'admin';
+
 exports.createNewsletter = async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ message: 'Access denied' });
+
   try {
-    const newsletter = await Newsletter.create(req.body);
-    await AuditLog.create({
-      user: req.user.id,
-      action: 'created',
-      targetType: 'Newsletter',
-      targetId: newsletter._id,
-      details: `Created newsletter titled "${newsletter.title}"`
-    });
+    const newsletter = await Newsletter.create({ ...req.body, createdBy: req.user.id });
+    await AuditLog.create({ action: 'create', newsletterId: newsletter._id, userId: req.user.id });
     res.status(201).json(newsletter);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to create newsletter' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to create newsletter', error: error.message });
+  }
+};
+
+exports.getAllNewsletters = async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ message: 'Access denied' });
+
+  try {
+    const newsletters = await Newsletter.find();
+    res.json(newsletters);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch newsletters', error: error.message });
+  }
+};
+
+exports.getNewsletterById = async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ message: 'Access denied' });
+
+  try {
+    const newsletter = await Newsletter.findById(req.params.id);
+    if (!newsletter) return res.status(404).json({ message: 'Newsletter not found' });
+    res.json(newsletter);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch newsletter', error: error.message });
   }
 };
 
 exports.updateNewsletter = async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ message: 'Access denied' });
+
   try {
-    const newsletter = await Newsletter.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    await AuditLog.create({
-      user: req.user.id,
-      action: 'updated',
-      targetType: 'Newsletter',
-      targetId: newsletter._id,
-      details: `Updated newsletter titled "${newsletter.title}"`
-    });
+    const newsletter = await Newsletter.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body },
+      { new: true }
+    );
+    if (!newsletter) return res.status(404).json({ message: 'Newsletter not found' });
+
+    await AuditLog.create({ action: 'update', newsletterId: newsletter._id, userId: req.user.id });
     res.json(newsletter);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to update newsletter' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to update newsletter', error: error.message });
   }
 };
 
 exports.deleteNewsletter = async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ message: 'Access denied' });
+
   try {
     const newsletter = await Newsletter.findByIdAndDelete(req.params.id);
-    await AuditLog.create({
-      user: req.user.id,
-      action: 'deleted',
-      targetType: 'Newsletter',
-      targetId: newsletter._id,
-      details: `Deleted newsletter titled "${newsletter.title}"`
-    });
-    res.json({ message: 'Newsletter deleted' });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to delete newsletter' });
-  }
-};
+    if (!newsletter) return res.status(404).json({ message: 'Newsletter not found' });
 
-exports.getNewsletter = async (req, res) => {
-  try {
-    const newsletter = await Newsletter.findById(req.params.id);
-    await AuditLog.create({
-      user: req.user.id,
-      action: 'viewed',
-      targetType: 'Newsletter',
-      targetId: newsletter._id,
-      details: `Viewed newsletter titled "${newsletter.title}"`
-    });
-    res.json(newsletter);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to get newsletter' });
+    await AuditLog.create({ action: 'delete', newsletterId: newsletter._id, userId: req.user.id });
+    res.json({ message: 'Newsletter deleted' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete newsletter', error: error.message });
   }
 };
