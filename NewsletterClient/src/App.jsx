@@ -1,48 +1,58 @@
-import React, { useState, useEffect } from 'react';
-import Login from './components/Login';
-import Dashboard from './pages/Dashboard';
-import SidebarNav from '../SidebarNav';
+ import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Login from './pages/Login';
+import DashboardLayout from './pages/DashboardLayout';
+import SimpleLayout from './pages/SimpleLayout';
+import Welcome from './pages/Welcome';
+import Create from './pages/create';
+import Drafts from './pages/Drafts';
+import Scheduled from './pages/Scheduled';
+import Published from './pages/Published';
+import Archived from './pages/Archived';
+import Audit from './pages/Audit';
+
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
-  const [userRole, setUserRole] = useState(null);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      // Ideally decode token or fetch user role from API here
-      // For now, just hardcode as 'admin'
-      setUserRole('admin');
-    } else {
-      setUserRole(null);
-    }
-  }, [isAuthenticated]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const handleLogin = () => {
+    localStorage.setItem('token', 'demo-token');
     setIsAuthenticated(true);
-    setUserRole('admin'); // Set role after login (replace with real role)
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     setIsAuthenticated(false);
-    setUserRole(null);
   };
 
-  return (
-    <div style={{ display: 'flex' }}>
-      {isAuthenticated && userRole === 'admin' && (
-        <SidebarNav userRole={userRole} />
-      )}
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    setIsAuthenticated(!!token);
+  }, []);
 
-      <main style={{ flexGrow: 1, padding: '20px' }}>
-        {isAuthenticated ? (
-          <Dashboard onLogout={handleLogout} />
+  return (
+    <Router>
+      <Routes>
+        {!isAuthenticated ? (
+          <Route path="*" element={<Login onLogin={handleLogin} />} />
         ) : (
-          <Login onLogin={handleLogin} />
+          <>
+            <Route path="/" element={<DashboardLayout onLogout={handleLogout} />}>
+              <Route index element={<Welcome />} />
+            </Route>
+
+            {/* All other pages with only a Home button */}
+            <Route path="/create" element={<SimpleLayout><Create /></SimpleLayout>} />
+            <Route path="/drafts" element={<SimpleLayout><Drafts /></SimpleLayout>} />
+            <Route path="/scheduled" element={<SimpleLayout><Scheduled /></SimpleLayout>} />
+            <Route path="/published" element={<SimpleLayout><Published /></SimpleLayout>} />
+            <Route path="/archived" element={<SimpleLayout><Archived /></SimpleLayout>} />
+            <Route path="/audit" element={<SimpleLayout><Audit /></SimpleLayout>} />
+          </>
         )}
-      </main>
-    </div>
+      </Routes>
+    </Router>
   );
 }
 
-export default App;
+export default App; 

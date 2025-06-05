@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
 
 const Login = ({ onLogin }) => {
@@ -10,14 +10,18 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setError('');
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
+      const response = await axios.post(`${import.meta.env.VITE_FLASK_API}/api/auth/login`, {
         email,
         password,
       });
       localStorage.setItem('token', response.data.token);
-      onLogin();
+      onLogin();  // Your callback to update login state
     } catch (err) {
-      setError('Invalid email or password');
+      if (err.response && err.response.status === 401) {
+        setError('Invalid email or password');
+      } else {
+        setError('Server error, please try again later');
+      }
     }
   };
 
