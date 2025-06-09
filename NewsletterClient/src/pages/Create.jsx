@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import grapesjs from 'grapesjs';
 import 'grapesjs/dist/css/grapes.min.css';
 import 'grapesjs-preset-webpage'; // Preset for blocks & UI
+import 'grapesjs-blocks-basic';
+import 'grapesjs-plugin-forms';
+import 'grapesjs-component-countdown';
+import 'grapesjs-plugin-export';
+import 'grapesjs-plugin-filestack';
+import 'grapesjs-plugin-ckeditor'; // Needs CKEditor
+import 'grapesjs-touch';
 
 const Create = () => {
   const [keywords, setKeywords] = useState('');
@@ -81,14 +88,22 @@ const Create = () => {
         width: 'auto',
         fromElement: false,
         storageManager: false,
-        plugins: ['grapesjs-preset-webpage'],
+        plugins: ['grapesjs-preset-webpage', 'grapesjs-blocks-basic',  'grapesjs-plugin-forms',
+    'grapesjs-component-countdown',
+    'grapesjs-plugin-export',
+    'grapesjs-plugin-filestack',
+    'grapesjs-plugin-ckeditor',
+    'grapesjs-touch',],
         pluginsOpts: {
           'grapesjs-preset-webpage': {},
+          'grapesjs-plugin-ckeditor': {
+          position: 'left',
+        },
         },
         blockManager: {
           appendTo: '#blocks'
         },
-        //panels: { defaults: [] } // Let preset handle default panels
+        //panels: { defaults: [] } 
       });
       setEditor(gjsEditor);
     }
@@ -158,6 +173,10 @@ const Create = () => {
 
       {/* Block panel for GrapesJS */}
       <div id="blocks" style={{ marginTop: '30px', marginBottom: '10px' }}></div>
+
+      <div id="panels"></div>
+      <div id="layers"></div> 
+      <div id="styles"></div>
 
       {/* GrapesJS editor container */}
       <div id="gjs" />
