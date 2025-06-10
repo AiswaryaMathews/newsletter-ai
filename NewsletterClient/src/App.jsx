@@ -4,7 +4,7 @@ import Login from './pages/Login';
 import DashboardLayout from './pages/DashboardLayout';
 import SimpleLayout from './pages/SimpleLayout';
 import Welcome from './pages/Welcome';
-import Create from './pages/create';
+import Create from './pages/Create';
 import Drafts from './pages/Drafts';
 import Scheduled from './pages/Scheduled';
 import Published from './pages/Published';

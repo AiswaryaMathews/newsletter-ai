@@ -70,6 +70,42 @@ def beautify_keywords():
     except Exception as e:
         print("Error contacting Ollama for beautify:", e)
         return jsonify({ "error": "Failed to beautify text", "details": str(e) }), 500
+    
+@app.route('/api/generate-image', methods=['POST'])
+def generate_image():
+    data = request.get_json()
+    prompt = data.get("prompt", "").strip()
+
+    if not prompt:
+        return jsonify({"error": "Prompt is empty"}), 400
+
+    # Use free demo key; you can also get your own free key
+    api_url = "https://stablediffusionapi.com/api/v3/text2img"
+
+    payload = {
+        "key": "demo",  # demo key – replace with your free API key for more usage
+        "prompt": prompt,
+        "negative_prompt": "blurry, bad quality",
+        "width": "512",
+        "height": "512",
+        "samples": "1",
+        "num_inference_steps": "20",
+        "guidance_scale": 7.5
+    }
+
+    try:
+        response = requests.post(api_url, json=payload)
+        result = response.json()
+
+        if 'output' in result and result['output']:
+            return jsonify({ "imageUrl": result["output"][0] })
+        else:
+            return jsonify({ "error": "No image generated" }), 500
+
+    except Exception as e:
+        print("Error during image generation:", e)
+        return jsonify({ "error": "Image generation failed", "details": str(e) }), 500
+
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
@@ -87,4 +123,4 @@ def login():
         return jsonify({"message": "Invalid credentials"}), 401
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5001)  
