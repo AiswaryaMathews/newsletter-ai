@@ -9,72 +9,79 @@ const Create = () => {
   const [customTone, setCustomTone] = useState('');
   const [editorInstance, setEditorInstance] = useState(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  //const [prompt, setPrompt] = useState("");
+
 
   const htmlTemplateRef = useRef('');
-  const shouldAppend = useRef(false); // NEW: track if new content needs to be appended
+  const shouldAppend = useRef(false);
 
   const handleBeautify = async () => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_FLASK_API}/api/beautify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: keywords }),
-      });
-      const data = await response.json();
-      setKeywords(data.beautifiedText || '');
-    } catch (err) {
-      console.error('Beautification failed:', err);
-      alert('Failed to beautify text.');
+  try {
+    const response = await fetch('http://localhost:5001/api/beautify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: keywords }),
+    });
+
+    const data = await response.json();
+    console.log("✨ Beautify API response:", data);
+    if (data.beautifiedText) {
+      setKeywords(data.beautifiedText);
+    } else {
+      alert("Failed to beautify the content");
     }
-  };
+  } catch (err) {
+    console.error("Error beautifying:", err);
+    alert("Something went wrong during beautify");
+  }
+};
 
   const handleGenerate = async () => {
-    if (!keywords.trim()) return alert('Please enter some keywords.');
+  if (!keywords.trim()) {
+    alert('Please enter some keywords.');
+    return;
+  }
+  let htmlTemplate = '';
 
-    let htmlTemplate = '';
+  try {
+    const response = await fetch(`${import.meta.env.VITE_FLASK_API}/api/generate-newsletter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: keywords, tone: tone === 'other' ? customTone.trim() : tone }),
+    });
 
-    try {
-      const response = await fetch(`${import.meta.env.VITE_FLASK_API}/api/generate-newsletter`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: keywords, tone: tone === 'other' ? customTone.trim() : tone }),
-      });
+    const data = await response.json();
+    console.log('🧾 Full response from backend:', data);
 
-      const data = await response.json();
-      console.log('🧾 Received content:', data.content);
-      const content = data.content || '';
+    const content = data.content || data.components?.[0]?.content || ''; // ✅ safer fallback
 
-      const htmlTemplate = `
-        <section style="background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-bottom: 20px;">
-          <header style="border-bottom: 2px solid #3498db; margin-bottom: 20px;">
-            <h1 style="font-size: 28px; color: #2c3e50;">📰 Company Newsletter</h1>
-            <p style="font-size: 14px; color: #95a5a6;">By Newsletter Team</p>
-          </header>
-          <article style="font-size: 18px; line-height: 1.6; color: #2d3436;">
-            ${content}
-          </article>
-          ${image ? `<img src="${image}" alt="Newsletter visual" style="max-width: 100%; margin-top: 30px; border-radius: 8px;" />` : ''}
-        </section>
-      `;
-      console.log('🧱 HTML to add:', htmlTemplate);
-
-        } catch (err) {
+    htmlTemplate = `
+      <section style="background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-bottom: 20px;">
+        <header style="border-bottom: 2px solid #3498db; margin-bottom: 20px;">
+          <h1 style="font-size: 28px; color: #2c3e50;">📰 Company Newsletter</h1>
+          <p style="font-size: 14px; color: #95a5a6;">By Newsletter Team</p>
+        </header>
+        <article style="font-size: 18px; line-height: 1.6; color: #2d3436;">
+          ${content}
+        </article>
+        ${image ? `<img src="${image}" alt="Newsletter visual" style="max-width: 100%; margin-top: 30px; border-radius: 8px;" />` : ''}
+      </section>
+    `;
+    console.log('🧱 HTML to add:', htmlTemplate);
+  } catch (err) {
     console.error('Error generating content:', err);
     alert('Failed to generate newsletter content.');
-    return; // ❗ Stop execution if generation failed
+    return;
   }
 
-
-    if (!editorInstance) {
+  // ✅ Always defer adding content until the editor is ready
   htmlTemplateRef.current = htmlTemplate;
   shouldAppend.current = true;
-  setIsEditorOpen(true); // open editor before content injection
-} else {
-  // Editor is already loaded — safe to add content
-  editorInstance.addComponents(htmlTemplate);
-}
+  setIsEditorOpen(true);
+};
 
-  };
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -97,25 +104,21 @@ const Create = () => {
   };
 
   useEffect(() => {
-    if (
-    isEditorOpen &&
-    shouldAppend.current &&
-    htmlTemplateRef.current
-  ) {
-    const interval = setInterval(() => {
-    if (
-      editorInstance &&
-      typeof editorInstance.addComponents === "function"
-    ) {
-      editorInstance.addComponents(htmlTemplateRef.current); // Append, don't replace
-      shouldAppend.current = false;
-      htmlTemplateRef.current = '';
-      clearInterval(interval);
-      console.log('✅ Content appended after editor initialized');
+    if (isEditorOpen && shouldAppend.current && htmlTemplateRef.current) {
+      const interval = setInterval(() => {
+        if (editorInstance && typeof editorInstance.getWrapper === 'function') {
+          try{
+          editorInstance.addComponents(htmlTemplateRef.current);
+          shouldAppend.current = false;
+          htmlTemplateRef.current = '';
+          clearInterval(interval);
+          console.log('✅ Content appended after editor initialized');
+        } catch (err){
+            console.error("Failed to append content:", err);
+        } }
+      }, 500);
+      return () => clearInterval(interval);
     }
-  }, 500);
-    return () => clearInterval(interval)
-  }
   }, [editorInstance, isEditorOpen]);
 
   const setupAiImageCommand = (editor) => {
@@ -123,6 +126,7 @@ const Create = () => {
       run(ed) {
         const aiprompt = window.prompt("Enter a prompt for your AI-generated image:");
         if (!aiprompt) return alert("Prompt cannot be empty.");
+
         fetch(`${import.meta.env.VITE_FLASK_API}/api/generate-image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -179,15 +183,13 @@ const Create = () => {
       </div>
 
       {tone === 'other' && (
-        <div style={{ marginBottom: '10px' }}>
-          <input
-            type="text"
-            placeholder="Enter custom tone"
-            value={customTone}
-            onChange={(e) => setCustomTone(e.target.value)}
-            style={{ padding: '8px', width: '100%' }}
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="Enter custom tone"
+          value={customTone}
+          onChange={(e) => setCustomTone(e.target.value)}
+          style={{ padding: '8px', width: '100%', marginBottom: '10px' }}
+        />
       )}
 
       <div style={{ marginBottom: '20px' }}>
@@ -197,10 +199,8 @@ const Create = () => {
         <button onClick={() => setIsEditorOpen(true)} style={btnStyle('#8e44ad')}>Open Editor</button>
       </div>
 
-      <div style={{ marginBottom: '20px' }}>
-        <input type="file" accept="image/*" onChange={handleImageUpload} />
-        {image && <img src={image} alt="Preview" style={{ maxHeight: '150px', marginTop: '10px' }} />}
-      </div>
+      <input type="file" accept="image/*" onChange={handleImageUpload} />
+      {image && <img src={image} alt="Preview" style={{ maxHeight: '150px', marginTop: '10px' }} />}
 
       {isEditorOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, backgroundColor: '#fff' }}>

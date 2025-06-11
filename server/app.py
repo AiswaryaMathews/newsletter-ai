@@ -34,7 +34,7 @@ def generate_newsletter():
 
     payload = {
         "model": "mistral",
-        "prompt": f"Write a {tone} newsletter based on these key points: {prompt}",
+        "prompt": f"Write a {tone} newsletter based on these key points: {prompt}. The content should be around 50 to 60 words long.",
         "stream": False
     }
 
