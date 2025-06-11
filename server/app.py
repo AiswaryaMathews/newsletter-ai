@@ -73,38 +73,65 @@ def beautify_keywords():
     
 @app.route('/api/generate-image', methods=['POST'])
 def generate_image():
+    import time
+
     data = request.get_json()
     prompt = data.get("prompt", "").strip()
 
     if not prompt:
         return jsonify({"error": "Prompt is empty"}), 400
 
-    # Use free demo key; you can also get your own free key
-    api_url = "https://stablediffusionapi.com/api/v3/text2img"
+    # Stable Horde endpoint
+    api_url = "https://stablehorde.net/api/v2/generate/async"
+    headers = {
+        "Content-Type": "application/json",
+        "apikey": "0000000000"  # Optional: keep as "0000000000" for anonymous access
+    }
 
     payload = {
-        "key": "demo",  # demo key – replace with your free API key for more usage
         "prompt": prompt,
-        "negative_prompt": "blurry, bad quality",
-        "width": "512",
-        "height": "512",
-        "samples": "1",
-        "num_inference_steps": "20",
-        "guidance_scale": 7.5
+        "params": {
+            "width": 512,
+            "height": 512,
+            "steps": 20,
+            "cfg_scale": 7.5,
+            "sampler_name": "k_euler_a",
+            "n": 1
+        },
+        "nsfw": False,
+        "models": ["stable_diffusion"]
     }
 
     try:
-        response = requests.post(api_url, json=payload)
-        result = response.json()
+        # Submit the image generation job
+        submit_resp = requests.post(api_url, json=payload, headers=headers)
+        submit_resp.raise_for_status()
+        job_data = submit_resp.json()
+        job_id = job_data.get("id")
 
-        if 'output' in result and result['output']:
-            return jsonify({ "imageUrl": result["output"][0] })
-        else:
-            return jsonify({ "error": "No image generated" }), 500
+        if not job_id:
+            return jsonify({"error": "No job ID received"}), 500
+
+        # Poll the status of the job
+        status_url = f"https://stablehorde.net/api/v2/generate/status/{job_id}"
+        for _ in range(30):  # Max 30 attempts (~45 seconds)
+            status_resp = requests.get(status_url)
+            status_data = status_resp.json()
+
+            if status_data.get("done") and status_data.get("generations"):
+                image_url = status_data["generations"][0].get("img")
+                if image_url:
+                    return jsonify({"imageUrl": image_url})
+                else:
+                    return jsonify({"error": "Image URL missing"}), 500
+
+            time.sleep(1.5)
+
+        return jsonify({"error": "Image generation timed out"}), 504
 
     except Exception as e:
-        print("Error during image generation:", e)
-        return jsonify({ "error": "Image generation failed", "details": str(e) }), 500
+        print("Error with Stable Horde:", e)
+        return jsonify({"error": "Image generation failed", "details": str(e)}), 500
 
 
 @app.route('/api/auth/login', methods=['POST'])
