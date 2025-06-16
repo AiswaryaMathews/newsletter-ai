@@ -73,7 +73,7 @@ const Create = () => {
   .replace(/'/g, "&#39;");
 
 const handleGenerate = async () => {
-  if (!prompts.some(p => p.text && p.text.trim() != '')) {
+  if (!prompts.some(p => p.text && p.text.trim() !== '')) {
     alert("Please enter at least one set of keywords.");
     return;
   }
@@ -84,40 +84,70 @@ const handleGenerate = async () => {
     const response = await fetch(`${import.meta.env.VITE_FLASK_API}/api/generate-newsletter`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompts: prompts.map(p => ({text: p.text, bgColor: p.bgColor || bgColor, textColor: p.textColor || textColor, fontFamily: p.font || fontFamily, })), tone: tone === 'other' ? customTone.trim() : tone}),
+      body: JSON.stringify({
+        prompts: prompts.map(p => ({
+          text: p.text,
+          bgColor: p.bgColor || bgColor,
+          textColor: p.textColor || textColor,
+          fontFamily: p.font || fontFamily,
+        })),
+        tone: tone === 'other' ? customTone.trim() : tone,
+      }),
     });
 
     const data = await response.json();
     const contentArray = Array.isArray(data.content) ? data.content : [data.content];
 
-htmlTemplate = contentArray.map((item, idx) => {
-  const fontFamily = prompts[idx].font || fontFamily;
-  const bgColor = prompts[idx].bgColor || bgColor;
-  const textColor = prompts[idx].textColor || textColor;
+    if (prompts.length !== contentArray.length) {
+         alert("Mismatch: Number of prompts and content blocks must be equal.");
+         return;
+    }
+
+
+  htmlTemplate = contentArray.map((item, idx) => {
+  const prompt = prompts[idx];
+  const font = prompt.font || fontFamily;
+  const bg = prompt.bgColor || bgColor;
+  const text = prompt.textColor || textColor;
 
   return `
-   <section style="background-color: ${bgColor}; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-bottom: 20px; font-family: ${fontFamily}; color: ${textColor};">
-    <header style="border-bottom: 2px solid #3498db; margin-bottom: 20px;">
-      <h2 style="font-size: 24px;">📰 News ${idx + 1}</h2>
-    </header>
-    <article style="font-size: 18px; line-height: 1.6;" data-gjs-type="text">
-      ${item}
-    </article>
-  </section>
-`;
-  }).join('');
-  editorRef.current?.setComponents(htmlTemplate);
+    <div data-gjs-type="container" style="margin-bottom: 30px; padding: 20px; background-color: ${bg}; color: ${text}; font-family: ${font}; border-radius: 10px;">
+      <div style="display: flex; gap: 20px;">
+
+        <div style="flex: 1;" data-gjs-droppable="true">
+          <div data-gjs-type="image" style="height: 200px; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center;">
+            <p>Drop image here</p>
+          </div>
+        </div>
+
+
+        <div style="flex: 2;" data-gjs-type="text">
+          <h2>📰 News ${idx + 1}</h2>
+          <p style="font-size: 18px; line-height: 1.6;">${item}</p>
+        </div>
+
+      </div>
+    </div>
+  `;
+}).join('');
+
+const wrappedHtml = defaultNewsletterTemplate(htmlTemplate);
+editorInstance?.Components.clear(); // clear canvas
+editorInstance?.setComponents(wrappedHtml); 
+
+console.log("Wrapped HTML being inserted:", wrappedHtml);
+
+htmlTemplateRef.current = wrappedHtml;
+shouldAppend.current = true;
+setIsEditorOpen(true);
 
   } catch (err) {
     console.error('Error generating content:', err);
     alert('Failed to generate newsletter content.');
     return;
   }
-
-  htmlTemplateRef.current = htmlTemplate;
-  shouldAppend.current = true;
-  setIsEditorOpen(true);
 };
+
 
   const handleImageUpload = async (e) => {
   const file = e.target.files[0];
@@ -151,6 +181,42 @@ htmlTemplate = contentArray.map((item, idx) => {
   }
 };
 
+function defaultNewsletterTemplate(contentBlocks) {
+  const today = new Date().toLocaleDateString('en-IN', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  return `
+    <div style="background:#f4f4f4;padding:20px;font-family:sans-serif;">
+      <!-- Header with logo and date -->
+      <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 20px;border-radius:6px 6px 0 0;">
+        <img src="/gapblueLogo.png" alt="Company Logo" style="height:60px;" />
+        <p style="margin:0;font-size:14px;color:#333;">${today}</p>
+      </div>
+
+      <!-- Title Section -->
+      <div style="background:#007BFF;padding:20px;color:white;text-align:center;">
+        <h1 style="margin:0;font-size:36px;font-weight:bold;">NEWSLETTER</h1>
+      </div>
+
+      <!-- Dynamic Content Blocks -->
+      <div style="padding:20px;background:white;">
+        ${contentBlocks}
+      </div>
+
+      <!-- Footer -->
+      <div style="background:#333;color:white;padding:15px;text-align:center;border-radius:0 0 6px 6px;">
+        <p style="margin:5px 0;">🌐 <a href="https://gapblue.com" style="color:#ddd;text-decoration:none;">gapblue.com</a></p>
+        <p style="margin:5px 0;">✉️ <a href="mailto:someone@gapblue.com" style="color:#ddd;text-decoration:none;">someone@gapblue.com</a></p>
+        <p style="margin:5px 0;">📞 +91-9876543210</p>
+      </div>
+    </div>
+  `;
+}
+
+
+
+
 
   const handleReset = () => {
   setKeywords('');
@@ -177,22 +243,21 @@ htmlTemplate = contentArray.map((item, idx) => {
 
 
   useEffect(() => {
-    if (!isEditorOpen || !shouldAppend.current || !htmlTemplateRef.current) return;
-      const timeout = setTimeout(() => {
-        if (editorInstance && typeof editorInstance.getWrapper === 'function') {
-          try{
-          editorInstance.addComponents(htmlTemplateRef.current, { at: -1});
-          shouldAppend.current = false;
-          htmlTemplateRef.current = '';
-          
-          console.log('✅ Clean HTML injected into editor root');
-        } catch (err){
-            console.error("Failed to append content:", err);
-        } }
-      }, 300);
-      return () => clearTimeout(timeout);
-    
-  }, [editorInstance, isEditorOpen]);
+  if (!isEditorOpen || !editorInstance || !shouldAppend.current || !htmlTemplateRef.current) return;
+
+  const timeout = setTimeout(() => {
+    try {
+      editorInstance.setComponents(htmlTemplateRef.current);
+      shouldAppend.current = false;
+      console.log('✅ Template injected with content');
+    } catch (err) {
+      console.error('❌ Failed to inject template:', err);
+    }
+  }, 300);
+
+  return () => clearTimeout(timeout);
+}, [editorInstance, isEditorOpen]);
+
 
   const setupAiImageCommand = (editor) => {
     editor.Commands.add('open-ai-image-generator', {
@@ -222,6 +287,7 @@ htmlTemplate = contentArray.map((item, idx) => {
     });
   };
 
+ 
   return (
     <div style={{ padding: '20px', maxWidth: '720px', margin: 'auto' }}>
       <h2>Create Newsletter</h2>
@@ -398,6 +464,16 @@ htmlTemplate = contentArray.map((item, idx) => {
             </button>
           </div>
 
+          <div style={{ position: 'fixed', top: '54px', left: '500px', zIndex: 10001 }}>
+            <button
+              onClick={() => editorInstance?.runCommand('clear-editor-command')}
+              style={btnStyle('#f39c12')}
+            >
+              🧹 Clear Editor
+            </button>
+          </div>
+
+
           <div style={{ height: 'calc(100% - 50px)' }}>
             <StudioEditor
               options={{
@@ -411,89 +487,119 @@ htmlTemplate = contentArray.map((item, idx) => {
               onEditor={(editor) => {
                 console.log('Editor ready:', editor);
                 setEditorInstance(editor);
+                editorRef.current = editor;
                 setupAiImageCommand(editor);
 
+                const baseHtml = defaultNewsletterTemplate("<p>Start building your newsletter!</p>");
+                editor.setComponents(baseHtml);
+              
                 editor.on("component:selected", (selected) => {
-  if (!selected || !selected.is("text")) return;
+                if (!selected || !selected.is("text")) return;
 
-  const existingBox = document.querySelector(".tone-options");
-  if (existingBox) existingBox.remove();
+                const existingBox = document.querySelector(".tone-options");
+                if (existingBox) existingBox.remove();
 
-  const el = document.createElement("div");
-  el.className = "tone-options";
-  el.style.position = "fixed";
-  el.style.top = "80px";
-  el.style.right = "20px";
-  el.style.zIndex = "9999";
-  el.style.background = "#fff";
-  el.style.padding = "12px";
-  el.style.border = "1px solid #ccc";
-  el.style.borderRadius = "8px";
-  el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-  el.style.width = "220px";
-  el.style.fontFamily = "sans-serif";
+                const el = document.createElement("div");
+                el.className = "tone-options";
+                el.style.position = "fixed";
+                el.style.top = "80px";
+                el.style.right = "20px";
+                el.style.zIndex = "9999";
+                el.style.background = "#fff";
+                el.style.padding = "12px";
+                el.style.border = "1px solid #ccc";
+                el.style.borderRadius = "8px";
+                el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+                el.style.width = "220px";
+                el.style.fontFamily = "sans-serif";
 
-  el.innerHTML = `
-    <label style="font-size:14px; font-weight:bold;">Tone</label>
-    <select id="tone-select" style="width:100%; margin-top:6px; background: #aaa">
-      <option value="formal">Formal</option>
-      <option value="casual">Casual</option>
-      <option value="professional">Professional</option>
-      <option value="polite">Polite</option>
-      <option value="friendly">Friendly</option>
-      <option value="other">Other (Specify)</option>
-    </select>
-    <input type="text" id="custom-tone" placeholder="Enter custom tone..." style="display:none; margin-top:8px; width:100%;" />
-    <button id="beautify-btn" style="margin-top:12px; width:100%; background:#ff007f">Beautify</button>
-    <button id="remove-ui-btn" style="margin-top:6px; width:100%; background:#800808;">Close</button>
-  `;
+                el.innerHTML = `
+                  <label style="font-size:14px; font-weight:bold;">Tone</label>
+                  <select id="tone-select" style="width:100%; margin-top:6px; background: #aaa">
+                    <option value="formal">Formal</option>
+                    <option value="casual">Casual</option>
+                    <option value="professional">Professional</option>
+                    <option value="polite">Polite</option>
+                    <option value="friendly">Friendly</option>
+                    <option value="other">Other (Specify)</option>
+                  </select>
+                  <input type="text" id="custom-tone" placeholder="Enter custom tone..." style="display:none; margin-top:8px; width:100%;" />
+                  <button id="beautify-btn" style="margin-top:12px; width:100%; background:#ff007f">Beautify</button>
+                  <button id="remove-ui-btn" style="margin-top:6px; width:100%; background:#800808;">Close</button>
+                `;
 
-  document.body.appendChild(el);
+                document.body.appendChild(el);
 
-  const toneSelect = document.getElementById("tone-select");
-  const customToneInput = document.getElementById("custom-tone");
-  const beautifyBtn = document.getElementById("beautify-btn");
-  const closeBtn = document.getElementById("remove-ui-btn");
+                const toneSelect = document.getElementById("tone-select");
+                const customToneInput = document.getElementById("custom-tone");
+                const beautifyBtn = document.getElementById("beautify-btn");
+                const closeBtn = document.getElementById("remove-ui-btn");
 
-  toneSelect.addEventListener("change", () => {
-    customToneInput.style.display = toneSelect.value === "other" ? "block" : "none";
-  });
+                toneSelect.addEventListener("change", () => {
+                  customToneInput.style.display = toneSelect.value === "other" ? "block" : "none";
+                });
 
-  beautifyBtn.addEventListener("click", async () => {
-  const selected = editor.getSelected();
+                beautifyBtn.addEventListener("click", async () => {
+                const selected = editor.getSelected();
 
-  if (!selected) return alert("Please select a block.");
-  
-  const content = selected.getEl()?.innerText?.trim();
-  const toneToUse = toneSelect.value === "other" ? customToneInput.value.trim() : toneSelect.value;
+                if (!selected) return alert("Please select a block.");
+                
+                const content = selected.getEl()?.innerText?.trim();
+                const toneToUse = toneSelect.value === "other" ? customToneInput.value.trim() : toneSelect.value;
 
-  if (!content || content.split(" ").length < 3)
-    return alert("Please select some meaningful text.");
+                if (!content || content.split(" ").length < 3)
+                  return alert("Please select some meaningful text.");
 
-  if (!toneToUse) return alert("Please specify a tone.");
+                if (!toneToUse) return alert("Please specify a tone.");
 
-  const res = await fetch(`${import.meta.env.VITE_FLASK_API}/api/beautify`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({text: content, tone: toneToUse })
-  });
+                const res = await fetch(`${import.meta.env.VITE_FLASK_API}/api/beautify`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({text: content, tone: toneToUse })
+                });
 
-  const json = await res.json();
-  if (json.beautified) {
-    selected.set("components", json.beautified);
-    selected.addAttributes({ "data-tone": toneToUse });
-  } else {
-    alert("Failed to beautify content.");
-  }
-});
+                const json = await res.json();
+                if (json.beautified) {
+                  selected.set("components", json.beautified);
+                  selected.addAttributes({ "data-tone": toneToUse });
+                } else {
+                  alert("Failed to beautify content.");
+                }
+              });
 
 
-  closeBtn.addEventListener("click", () => {
-    el.remove();
-  });
-});
+                closeBtn.addEventListener("click", () => {
+                  el.remove();
+                });
+              });
 
-              }}
+             // Define the clear command
+                editor.Commands.add('clear-editor-command', {
+                  run(editor) {
+                    if (confirm('Are you sure you want to clear the entire editor?')) {
+                      editor.DomComponents.clear();
+                      editor.Css.clear();
+                      editor.AssetManager.getAll().reset();
+                      editor.setComponents('<div style="padding: 20px; text-align: center;"></div>');
+                      editor.StyleManager.getSectors().reset();
+                    }
+                  }
+                });
+
+                if (!editor.Panels.getPanel('top-panel')) {
+                editor.Panels.addPanel({ id: 'top-panel', buttons: [] });
+                }
+                // ✅ Add Clear Editor button to that top panel
+                if (!editor.Panels.getButton('top-panel', 'clear-editor')) {
+                editor.Panels.addButton('top-panel', {
+                  id: 'clear-editor',
+                  className: 'fa fa-trash',
+                  label: 'Clear Editor',
+                  attributes: { title: 'Click to clear all content' },
+                  command: 'clear-editor-command',
+                }); }
+              }
+            }
             />
           </div>
         </div>

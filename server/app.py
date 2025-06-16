@@ -33,22 +33,16 @@ def generate_newsletter():
     prompts = data.get("prompts", [])
     tone = data.get("tone", "formal")
 
-    all_sections = []
+    content_list = []
 
     for i, prompt_data in enumerate(prompts):
         try:
             if isinstance(prompt_data, str):
                 keywords = prompt_data.strip()
-                font_family = "sans-serif"
-                bg_color = "#ffffff"
-                text_color = "#000000"
-            elif isinstance(prompt_data,dict):
+            elif isinstance(prompt_data, dict):
                 keywords = prompt_data.get("text", "").strip()
-                font_family = prompt_data.get("fontFamily", "sans-serif")
-                bg_color = prompt_data.get("bgColor", "#ffffff")
-                text_color = prompt_data.get("textColor", "#000000")
             else:
-                continue  # Skip empty entries
+                continue  # Skip invalid entries
 
             prompt = (
                 f"You are a professional newsletter writer and you are writing the content for a daily company newsletter. "
@@ -67,33 +61,12 @@ def generate_newsletter():
             result = response.json()
             content = result.get("response", "").strip()
 
-            section_html = f"""
-            <section style="margin-bottom:30px;padding:20px;border:1px solid #ddd;border-radius:8px;
-                            background-color:{bg_color};color:{text_color};font-family:{font_family};">
-               <h2 style="color:#007BFF;margin-top:0;">{keywords}</h2>
-               <p>{content}</p>
-            </section>
-            """
-            all_sections.append(section_html)
+            content_list.append(content)
         except Exception as e:
             print(f"Failed to generate content for prompt {i+1}: {e}")
-            all_sections.append(f"<section>Error generating content for: {keywords}</section>")
+            content_list.append("Error generating content.")
 
-    combined_newsletter = "\n".join(all_sections)
-
-    styled_html = f"""
-    <div style="background:#f4f4f4;padding:20px;font-family:sans-serif;">
-      <header style="background:#007BFF;padding:10px 20px;border-radius:6px 6px 0 0;color:white;">
-        <h1 style="margin:0;">Company Newsletter</h1>
-      </header>
-      <main style="background:white;padding:20px;border-radius:0 0 6px 6px;">
-        {combined_newsletter}
-      </main>
-    </div>
-    """
-
-    return jsonify({"content": styled_html})
-
+    return jsonify({"content": content_list})
 
 
 @app.route('/api/beautify', methods=['POST'])
