@@ -500,88 +500,138 @@ function defaultNewsletterTemplate(contentBlocks) {
 
                 const baseHtml = defaultNewsletterTemplate("<p>Start building your newsletter!</p>");
                 editor.setComponents(baseHtml);
-              
+
+                // ✅ Add Upload Image command
+                editor.Commands.add('upload-image', {
+                  run(editor) {
+                    const selected = editor.getSelected();
+                    if (!selected || selected.get('type') !== 'image') return;
+
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.style.display = 'none';
+
+                    input.onchange = () => {
+                      const file = input.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        selected.set('src', reader.result);
+                      };
+                      reader.readAsDataURL(file);
+                    };
+
+                    document.body.appendChild(input);
+                    input.click();
+                    document.body.removeChild(input);
+                  }
+                });
+
+                // ✅ Show tone selector when text block is selected
                 editor.on("component:selected", (selected) => {
-                if (!selected || !selected.is("text")) return;
+                  const existingBox = document.querySelector(".tone-options");
+                  if (existingBox) existingBox.remove();
 
-                const existingBox = document.querySelector(".tone-options");
-                if (existingBox) existingBox.remove();
+                  if (selected && selected.is("text")) {
+                    const el = document.createElement("div");
+                    el.className = "tone-options";
+                    el.style.position = "fixed";
+                    el.style.top = "80px";
+                    el.style.right = "20px";
+                    el.style.zIndex = "9999";
+                    el.style.background = "#fff";
+                    el.style.padding = "12px";
+                    el.style.border = "1px solid #ccc";
+                    el.style.borderRadius = "8px";
+                    el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+                    el.style.width = "220px";
+                    el.style.fontFamily = "sans-serif";
 
-                const el = document.createElement("div");
-                el.className = "tone-options";
-                el.style.position = "fixed";
-                el.style.top = "80px";
-                el.style.right = "20px";
-                el.style.zIndex = "9999";
-                el.style.background = "#fff";
-                el.style.padding = "12px";
-                el.style.border = "1px solid #ccc";
-                el.style.borderRadius = "8px";
-                el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-                el.style.width = "220px";
-                el.style.fontFamily = "sans-serif";
+                    el.innerHTML = `
+                      <label style="font-size:14px; font-weight:bold;">Tone</label>
+                      <select id="tone-select" style="width:100%; margin-top:6px; background: #aaa">
+                        <option value="formal">Formal</option>
+                        <option value="casual">Casual</option>
+                        <option value="professional">Professional</option>
+                        <option value="polite">Polite</option>
+                        <option value="friendly">Friendly</option>
+                        <option value="other">Other (Specify)</option>
+                      </select>
+                      <input type="text" id="custom-tone" placeholder="Enter custom tone..." style="display:none; margin-top:8px; width:100%;" />
+                      <button id="beautify-btn" style="margin-top:12px; width:100%; background:#ff007f">Beautify</button>
+                      <button id="remove-ui-btn" style="margin-top:6px; width:100%; background:#800808;">Close</button>
+                    `;
 
-                el.innerHTML = `
-                  <label style="font-size:14px; font-weight:bold;">Tone</label>
-                  <select id="tone-select" style="width:100%; margin-top:6px; background: #aaa">
-                    <option value="formal">Formal</option>
-                    <option value="casual">Casual</option>
-                    <option value="professional">Professional</option>
-                    <option value="polite">Polite</option>
-                    <option value="friendly">Friendly</option>
-                    <option value="other">Other (Specify)</option>
-                  </select>
-                  <input type="text" id="custom-tone" placeholder="Enter custom tone..." style="display:none; margin-top:8px; width:100%;" />
-                  <button id="beautify-btn" style="margin-top:12px; width:100%; background:#ff007f">Beautify</button>
-                  <button id="remove-ui-btn" style="margin-top:6px; width:100%; background:#800808;">Close</button>
-                `;
+                    document.body.appendChild(el);
 
-                document.body.appendChild(el);
+                    const toneSelect = document.getElementById("tone-select");
+                    const customToneInput = document.getElementById("custom-tone");
+                    const beautifyBtn = document.getElementById("beautify-btn");
+                    const closeBtn = document.getElementById("remove-ui-btn");
 
-                const toneSelect = document.getElementById("tone-select");
-                const customToneInput = document.getElementById("custom-tone");
-                const beautifyBtn = document.getElementById("beautify-btn");
-                const closeBtn = document.getElementById("remove-ui-btn");
+                    toneSelect.addEventListener("change", () => {
+                      customToneInput.style.display = toneSelect.value === "other" ? "block" : "none";
+                    });
 
-                toneSelect.addEventListener("change", () => {
-                  customToneInput.style.display = toneSelect.value === "other" ? "block" : "none";
+                    beautifyBtn.addEventListener("click", async () => {
+                      const selected = editor.getSelected();
+                      if (!selected) return alert("Please select a block.");
+                      
+                      const content = selected.getEl()?.innerText?.trim();
+                      const toneToUse = toneSelect.value === "other" ? customToneInput.value.trim() : toneSelect.value;
+
+                      if (!content || content.split(" ").length < 3)
+                        return alert("Please select some meaningful text.");
+
+                      if (!toneToUse) return alert("Please specify a tone.");
+
+                      const res = await fetch(`${import.meta.env.VITE_FLASK_API}/api/beautify`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: content, tone: toneToUse })
+                      });
+
+                      const json = await res.json();
+                      if (json.beautified) {
+                        selected.set("components", json.beautified);
+                        selected.addAttributes({ "data-tone": toneToUse });
+                      } else {
+                        alert("Failed to beautify content.");
+                      }
+                    });
+
+                    closeBtn.addEventListener("click", () => {
+                      el.remove();
+                    });
+                  }
+
+                  // ✅ Add Upload button to the image block’s toolbar
+                  if (selected && selected.get('type') === 'image') {
+                    const toolbar = selected.get('toolbar') || [];
+
+                    const alreadyExists = toolbar.some(btn => btn.command === 'upload-image');
+                    if (!alreadyExists) {
+                      toolbar.unshift({
+                        attributes: { title: 'Upload Image' },
+                        command: 'upload-image',
+                        label: '📷 Upload Image',
+                      });
+                      selected.set('toolbar', toolbar);
+                    }
+                  }
                 });
 
-                beautifyBtn.addEventListener("click", async () => {
-                const selected = editor.getSelected();
-
-                if (!selected) return alert("Please select a block.");
-                
-                const content = selected.getEl()?.innerText?.trim();
-                const toneToUse = toneSelect.value === "other" ? customToneInput.value.trim() : toneSelect.value;
-
-                if (!content || content.split(" ").length < 3)
-                  return alert("Please select some meaningful text.");
-
-                if (!toneToUse) return alert("Please specify a tone.");
-
-                const res = await fetch(`${import.meta.env.VITE_FLASK_API}/api/beautify`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({text: content, tone: toneToUse })
+                // ✅ Add Upload Image to top options panel
+                editor.Panels.addButton('options', {
+                  id: 'upload-image-global',
+                  className: 'fa fa-image',
+                  label: 'Upload Image',
+                  attributes: { title: 'Upload an image to selected image block' },
+                  command: 'upload-image',
                 });
 
-                const json = await res.json();
-                if (json.beautified) {
-                  selected.set("components", json.beautified);
-                  selected.addAttributes({ "data-tone": toneToUse });
-                } else {
-                  alert("Failed to beautify content.");
-                }
-              });
-
-
-                closeBtn.addEventListener("click", () => {
-                  el.remove();
-                });
-              });
-
-             // Define the clear command
+                // ✅ Add clear editor command
                 editor.Commands.add('clear-editor-command', {
                   run(editor) {
                     if (confirm('Are you sure you want to clear the entire editor?')) {
@@ -594,21 +644,23 @@ function defaultNewsletterTemplate(contentBlocks) {
                   }
                 });
 
+                // ✅ Add Clear Editor button to top panel
                 if (!editor.Panels.getPanel('top-panel')) {
-                editor.Panels.addPanel({ id: 'top-panel', buttons: [] });
+                  editor.Panels.addPanel({ id: 'top-panel', buttons: [] });
                 }
-                // ✅ Add Clear Editor button to that top panel
+
                 if (!editor.Panels.getButton('top-panel', 'clear-editor')) {
-                editor.Panels.addButton('top-panel', {
-                  id: 'clear-editor',
-                  className: 'fa fa-trash',
-                  label: 'Clear Editor',
-                  attributes: { title: 'Click to clear all content' },
-                  command: 'clear-editor-command',
-                }); }
-              }
-            }
+                  editor.Panels.addButton('top-panel', {
+                    id: 'clear-editor',
+                    className: 'fa fa-trash',
+                    label: 'Clear Editor',
+                    attributes: { title: 'Click to clear all content' },
+                    command: 'clear-editor-command',
+                  });
+                }
+              }}
             />
+
           </div>
         </div>
       )}
