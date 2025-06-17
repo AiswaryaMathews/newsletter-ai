@@ -191,7 +191,7 @@ function defaultNewsletterTemplate(contentBlocks) {
       <!-- Header with logo and date -->
       <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 20px;border-radius:6px 6px 0 0;">
         <img src="/gapblueLogo.png" alt="Company Logo" style="height:60px;" />
-        <p style="margin:0;font-size:14px;color:#333;">${today}</p>
+        <p style="margin:0;font-size:19px;color:#333;">${today}</p>
       </div>
 
       <!-- Title Section -->
@@ -204,13 +204,21 @@ function defaultNewsletterTemplate(contentBlocks) {
         ${contentBlocks}
       </div>
 
-      <!-- Footer -->
-      <div style="background:#333;color:white;padding:15px;text-align:center;border-radius:0 0 6px 6px;">
-        <p style="margin:5px 0;">🌐 <a href="https://gapblue.com" style="color:#ddd;text-decoration:none;">gapblue.com</a></p>
-        <p style="margin:5px 0;">✉️ <a href="mailto:someone@gapblue.com" style="color:#ddd;text-decoration:none;">someone@gapblue.com</a></p>
-        <p style="margin:5px 0;">📞 +91-9876543210</p>
+      <!-- Full-Width Footer -->
+      <div style="width:100%;background:#333;color:white;padding:15px 0;text-align:center;">
+        <div style="display:flex;justify-content:center;gap:30px;flex-wrap:wrap;align-items:center;">
+          <p style="margin:0;">
+            🌐 <a href="https://gapblue.com" style="color:#ddd;text-decoration:none;">gapblue.com</a>
+          </p>
+          <p style="margin:0;">
+            ✉️ <a href="mailto:someone@gapblue.com" style="color:#ddd;text-decoration:none;">someone@gapblue.com</a>
+          </p>
+          <p style="margin:0;">
+            📞 +91-9876543210
+          </p>
+        </div>
       </div>
-    </div>
+     </div>
   `;
 }
 
