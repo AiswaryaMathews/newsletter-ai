@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import StudioEditor from "@grapesjs/studio-sdk/react";
 import "@grapesjs/studio-sdk/style";
+import { canvasAbsoluteMode } from '@grapesjs/studio-sdk-plugins';
 
 const Create = () => {
   const [keywords, setKeywords] = useState('');
@@ -78,7 +79,7 @@ const handleGenerate = async () => {
     return;
   }
 
-  let htmlTemplate = '';
+  let finalHtml = '';
 
   try {
     const response = await fetch(`${import.meta.env.VITE_FLASK_API}/api/generate-newsletter`, {
@@ -96,58 +97,54 @@ const handleGenerate = async () => {
     });
 
     const data = await response.json();
-    const contentArray = Array.isArray(data.content) ? data.content : [data.content];
+    const contentBlocks = Array.isArray(data.contentBlocks) ? data.contentBlocks : [];
+    const layoutFragment = data.layoutFragment || '';
 
-    if (prompts.length !== contentArray.length) {
-         alert("Mismatch: Number of prompts and content blocks must be equal.");
-         return;
+    if (prompts.length !== contentBlocks.length) {
+      alert("Mismatch: Number of prompts and content blocks must be equal.");
+      return;
     }
 
+    // Build styled content sections
+    const contentHtml = contentBlocks.map((item, idx) => {
+      const prompt = prompts[idx];
+      const font = prompt.font || fontFamily;
+      const bg = prompt.bgColor || bgColor;
+      const text = prompt.textColor || textColor;
 
-  htmlTemplate = contentArray.map((item, idx) => {
-  const prompt = prompts[idx];
-  const font = prompt.font || fontFamily;
-  const bg = prompt.bgColor || bgColor;
-  const text = prompt.textColor || textColor;
-
-  return `
-    <div data-gjs-type="container" style="margin-bottom: 30px; padding: 20px; background-color: ${bg}; color: ${text}; font-family: ${font}; border-radius: 10px;">
-      <div style="display: flex; gap: 20px;">
-
-        <div style="flex: 1;" data-gjs-droppable="true">
-          <div data-gjs-type="image" style="height: 200px; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center;">
-            <p>Drop image here</p>
+      return `
+        <div data-gjs-type="container" style="margin-bottom: 30px; padding: 20px; background-color: ${bg}; color: ${text}; font-family: ${font}; border-radius: 10px;">
+          <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;" data-gjs-droppable="true">
+              <div data-gjs-type="image" style="height: 200px; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center;">
+                <p>Drop image here</p>
+              </div>
+            </div>
+            <div style="flex: 2;" data-gjs-type="text">
+              <h2>📰 News ${idx + 1}</h2>
+              <p style="font-size: 18px; line-height: 1.6;">${item}</p>
+            </div>
           </div>
         </div>
+      `;
+    }).join('');
 
+    // Combine layout + content into final HTML
+    finalHtml = defaultNewsletterTemplate(layoutFragment, contentHtml);
 
-        <div style="flex: 2;" data-gjs-type="text">
-          <h2>📰 News ${idx + 1}</h2>
-          <p style="font-size: 18px; line-height: 1.6;">${item}</p>
-        </div>
+    // Load into GrapesJS
+    editorInstance?.Components.clear();
+    editorInstance?.setComponents(finalHtml);
 
-      </div>
-    </div>
-  `;
-}).join('');
-
-const wrappedHtml = defaultNewsletterTemplate(htmlTemplate);
-editorInstance?.Components.clear(); // clear canvas
-editorInstance?.setComponents(wrappedHtml); 
-
-console.log("Wrapped HTML being inserted:", wrappedHtml);
-
-htmlTemplateRef.current = wrappedHtml;
-shouldAppend.current = true;
-setIsEditorOpen(true);
+    htmlTemplateRef.current = finalHtml;
+    shouldAppend.current = true;
+    setIsEditorOpen(true);
 
   } catch (err) {
     console.error('Error generating content:', err);
     alert('Failed to generate newsletter content.');
-    return;
   }
 };
-
 
   const handleImageUpload = async (e) => {
   const file = e.target.files[0];
@@ -181,31 +178,38 @@ setIsEditorOpen(true);
   }
 };
 
-function defaultNewsletterTemplate(contentBlocks) {
+function defaultNewsletterTemplate(layoutFragment, contentHtml) {
   const today = new Date().toLocaleDateString('en-IN', {
-    year: 'numeric', month: 'long', day: 'numeric'
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   });
 
   return `
     <div style="background:#f4f4f4;padding:20px;font-family:sans-serif;">
       <!-- Header with logo and date -->
-      <div style="display:flex;justify-content:space-between;align-items:center;background:#ffffff;padding:10px 20px;border-radius:6px 6px 0 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;background:#fec20c;padding:10px 20px;border-radius:6px 6px 0 0;">
         <img src="/gapblueLogo.png" alt="Company Logo" style="height:60px;" />
         <p style="margin:0;font-size:19px;color:#333;">${today}</p>
       </div>
 
-      <!-- Title Section -->
-      <div style="background:#007BFF;padding:20px;color:white;text-align:center;">
+      <!-- Title -->
+      <div style="background:#008080;padding:20px;color:white;text-align:center;">
         <h1 style="margin:0;font-size:36px;font-weight:bold;">NEWSLETTER</h1>
       </div>
 
-      <!-- Dynamic Content Blocks -->
-      <div style="padding:20px;background:white;">
-        ${contentBlocks}
+      <!-- AI-Generated Layout (with nav, hero, etc.) -->
+      <div style="margin-top:20px;background:white;padding:20px;">
+        ${layoutFragment}
       </div>
 
-      <!-- Full-Width Footer -->
-      <div style="width:100%;background:#333;color:white;padding:15px 0;text-align:center;">
+      <!-- Dynamic Content Blocks -->
+      <div style="margin-top:20px;background:white;padding:20px;">
+        ${contentHtml}
+      </div>
+
+      <!-- Footer -->
+      <div style="width:100%;background:#333;color:white;padding:20px 0;text-align:center;">
         <div style="display:flex;justify-content:center;gap:30px;flex-wrap:wrap;align-items:center;">
           <p style="margin:0;">
             🌐 <a href="https://gapblue.com" style="color:#ddd;text-decoration:none;">gapblue.com</a>
@@ -218,12 +222,9 @@ function defaultNewsletterTemplate(contentBlocks) {
           </p>
         </div>
       </div>
-     </div>
+    </div>
   `;
 }
-
-
-
 
 
   const handleReset = () => {
@@ -267,7 +268,7 @@ function defaultNewsletterTemplate(contentBlocks) {
 }, [editorInstance, isEditorOpen]);
 
 
-  const setupAiImageCommand = (editor) => {
+const setupAiImageCommand = (editor) => {
     editor.Commands.add('open-ai-image-generator', {
       run(ed) {
         const aiprompt = window.prompt("Enter a prompt for your AI-generated image:");
@@ -294,6 +295,39 @@ function defaultNewsletterTemplate(contentBlocks) {
       }
     });
   };
+
+const handleExportPdf = async () => {
+  if (!editorInstance) return alert("Editor not ready");
+
+  const html = editorInstance.getHtml() + "<style>" + editorInstance.getCss() + "</style>";
+  const filename = prompt("Enter PDF filename (without .pdf):", "newsletter") || "newsletter";
+
+  try {
+    const response = await fetch("http://localhost:5001/export", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ html, filename })
+    });
+
+    if (!response.ok) throw new Error("Export failed");
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (err) {
+    console.error("PDF Export Error:", err);
+    alert("PDF export failed");
+  }
+};
+
 
  
   return (
@@ -359,8 +393,8 @@ function defaultNewsletterTemplate(contentBlocks) {
       setNewsCount(count);
       setPrompts(Array(count).fill(""));
     }}
-    style={{ margin: '10px 0', padding: '6px' }}
-  />
+  style={{ margin: '10px 0', padding: '6px' }}
+/>
 </div>
 
 {prompts.map((prompt, idx) => (
@@ -430,14 +464,14 @@ function defaultNewsletterTemplate(contentBlocks) {
       )}
 
 
-      <div style={{ marginBottom: '20px' }}>
+     <div style={{ marginBottom: '20px' }}>
         <button onClick={handleGenerate} style={btnStyle('#3498db')}>Generate</button>
     
         <button onClick={handleReset} style={btnStyle('#e74c3c')}>Reset</button>
         <button onClick={() => setIsEditorOpen(true)} style={btnStyle('#8e44ad')}>Open Editor</button>
       </div>
 
-      <input type="file" accept="image/*" onChange={handleImageUpload} />
+     {/*  <input type="file" accept="image/*" onChange={handleImageUpload} />
       {image && (
         <>
          <img src={image} alt="Preview" style={{ maxHeight: '150px', marginTop: '10px' }} />
@@ -452,18 +486,23 @@ function defaultNewsletterTemplate(contentBlocks) {
       style={btnStyle('#27ae60')} // green style for "Insert" action
     >
       Insert Uploaded Image
-    </button>
-  </>
-      )}
+    </button> 
+  </> 
+      )} */}
       {isEditorOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, backgroundColor: '#fff' }}>
           <div style={{ textAlign: 'right', padding: '10px' }}>
             <button onClick={() => { const toneBox = document.querySelector(".tone-options");
-                                   if (toneBox) toneBox.remove();
-                                   setIsEditorOpen(false);}} style={btnStyle('#e74c3c')}>Close Editor</button>
+                  if (toneBox) toneBox.remove();
+                  setIsEditorOpen(false);}} style={btnStyle('#e74c3c')}>Close Editor</button>
           </div>
 
-          <div style={{ position: 'fixed', top: '54px', left: '300px', zIndex: 10001 }}>
+          <div style={{ textAlign: 'left', padding: '10px' }}>
+            <button
+              onClick={handleExportPdf} style={btnStyle('#007bff')}>Export as PDF</button>
+          </div>
+
+          <div style={{ position: 'fixed', top: '62px', left: '300px', zIndex: 10001 }}>
             <button
               onClick={() => editorInstance?.runCommand('open-ai-image-generator')}
               style={btnStyle('#0000ff')}
@@ -472,7 +511,7 @@ function defaultNewsletterTemplate(contentBlocks) {
             </button>
           </div>
 
-          <div style={{ position: 'fixed', top: '54px', left: '500px', zIndex: 10001 }}>
+          <div style={{ position: 'fixed', top: '62px', left: '500px', zIndex: 10001 }}>
             <button
               onClick={() => editorInstance?.runCommand('clear-editor-command')}
               style={btnStyle('#f39c12')}
@@ -485,10 +524,13 @@ function defaultNewsletterTemplate(contentBlocks) {
           <div style={{ height: 'calc(100% - 50px)' }}>
             <StudioEditor
               options={{
+                plugins: [
+                  canvasAbsoluteMode
+                ],
                 project: {
                   type: 'web',
                   default: {
-                    pages: [{ name: 'Home', component: '' }],
+                    pages: [{ name: 'Home', component: '' },],
                   },
                 },
               }}
@@ -498,7 +540,10 @@ function defaultNewsletterTemplate(contentBlocks) {
                 editorRef.current = editor;
                 setupAiImageCommand(editor);
 
-                const baseHtml = defaultNewsletterTemplate("<p>Start building your newsletter!</p>");
+                const baseHtml = defaultNewsletterTemplate( `<div style="text-align:center;padding:40px;">
+                      <h2>Start building your newsletter!</h2>
+                    </div>`, 
+                    '');
                 editor.setComponents(baseHtml);
 
                 // ✅ Add Upload Image command
