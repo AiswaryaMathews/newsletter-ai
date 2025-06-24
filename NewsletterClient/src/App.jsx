@@ -5,6 +5,7 @@ import DashboardLayout from './pages/DashboardLayout';
 import SimpleLayout from './pages/SimpleLayout';
 import Welcome from './pages/Welcome';
 import Create from './pages/Create';
+import UploadTemplatePage from './pages/UploadTemplatePage';
 import Drafts from './pages/Drafts';
 import Scheduled from './pages/Scheduled';
 import Published from './pages/Published';
@@ -42,7 +43,10 @@ function App() {
             </Route>
 
             {/* All other pages with only a Home button */}
+            
+            <Route path="/create/editor" element={<SimpleLayout><Create /></SimpleLayout>} />
             <Route path="/create" element={<SimpleLayout><Create /></SimpleLayout>} />
+            <Route path="/upload-template" element={<SimpleLayout><UploadTemplatePage /></SimpleLayout>} />
             <Route path="/drafts" element={<SimpleLayout><Drafts /></SimpleLayout>} />
             <Route path="/scheduled" element={<SimpleLayout><Scheduled /></SimpleLayout>} />
             <Route path="/published" element={<SimpleLayout><Published /></SimpleLayout>} />

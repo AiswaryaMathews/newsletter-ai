@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import StudioEditor from "@grapesjs/studio-sdk/react";
-import "@grapesjs/studio-sdk/style";
-import { canvasAbsoluteMode } from '@grapesjs/studio-sdk-plugins';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import StudioEditor from '../components/StudioEditor';
 
 const Create = () => {
   const [keywords, setKeywords] = useState('');
@@ -20,7 +19,7 @@ const Create = () => {
   const htmlTemplateRef = useRef('');
   const shouldAppend = useRef(false);
   const editorRef = useRef(null);
-
+  
   const handlePromptChange = (index, field, value) => {
   setPrompts(prev =>
     prev.map((p, i) => {
@@ -122,7 +121,7 @@ const handleGenerate = async () => {
             </div>
             <div style="flex: 2;" data-gjs-type="text">
               <h2>📰 News ${idx + 1}</h2>
-              <p style="font-size: 18px; line-height: 1.6;">${item}</p>
+              <p style="font-size: 18px; line-height: 1.6; color: inherit;">${item}</p>
             </div>
           </div>
         </div>
@@ -139,6 +138,10 @@ const handleGenerate = async () => {
     htmlTemplateRef.current = finalHtml;
     shouldAppend.current = true;
     setIsEditorOpen(true);
+    localStorage.setItem('isEditorOpen', 'true');
+    /*setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);*/
 
   } catch (err) {
     console.error('Error generating content:', err);
@@ -217,8 +220,8 @@ function defaultNewsletterTemplate(layoutFragment, contentHtml) {
           <p style="margin:0;">
             ✉️ <a href="mailto:someone@gapblue.com" style="color:#ddd;text-decoration:none;">someone@gapblue.com</a>
           </p>
-          <p style="margin:0;">
-            📞 +91-9876543210
+          <p style="margin:0; ">
+            📞 <span style="color:#ddd;">+91-9876543210</span>
           </p>
         </div>
       </div>
@@ -251,21 +254,41 @@ function defaultNewsletterTemplate(layoutFragment, contentHtml) {
 };
 
 
-  useEffect(() => {
+
+// 1️⃣ Restore mode and uploaded template
+useEffect(() => {
+  const wasEditorOpen = localStorage.getItem('isEditorOpen') === 'true';
+  const mode = localStorage.getItem('editorMode');
+  const uploadedTemplate = localStorage.getItem('uploadedTemplateHTML');
+
+  if (wasEditorOpen) {
+    setIsEditorOpen(true);
+
+    if (mode === 'upload' && uploadedTemplate) {
+      htmlTemplateRef.current = uploadedTemplate;
+      shouldAppend.current = true; // ✅ ensure injection happens later
+    }
+  }
+}, []);
+
+// 2️⃣ Inject HTML template into GrapesJS after it’s fully ready
+useEffect(() => {
   if (!isEditorOpen || !editorInstance || !shouldAppend.current || !htmlTemplateRef.current) return;
 
-  const timeout = setTimeout(() => {
+  const injectTemplate = () => {
     try {
       editorInstance.setComponents(htmlTemplateRef.current);
-      shouldAppend.current = false;
-      console.log('✅ Template injected with content');
+      shouldAppend.current = false; // ✅ prevent re-injection
+      console.log('✅ Template injected into editor');
     } catch (err) {
       console.error('❌ Failed to inject template:', err);
     }
-  }, 300);
+  };
 
+  const timeout = setTimeout(injectTemplate, 300); // small delay ensures GrapesJS is mounted
   return () => clearTimeout(timeout);
 }, [editorInstance, isEditorOpen]);
+
 
 
 const setupAiImageCommand = (editor) => {
@@ -296,43 +319,104 @@ const setupAiImageCommand = (editor) => {
     });
   };
 
-const handleExportPdf = async () => {
-  if (!editorInstance) return alert("Editor not ready");
-
-  const html = editorInstance.getHtml() + "<style>" + editorInstance.getCss() + "</style>";
-  const filename = prompt("Enter PDF filename (without .pdf):", "newsletter") || "newsletter";
-
-  try {
-    const response = await fetch("http://localhost:5001/export", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ html, filename })
-    });
-
-    if (!response.ok) throw new Error("Export failed");
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${filename}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (err) {
-    console.error("PDF Export Error:", err);
-    alert("PDF export failed");
+const handleExportHTML = async () => {
+  if (!editor) {
+    console.error("Editor not initialized");
+    return;
   }
+
+  const fileName = prompt("Enter filename (without .html):");
+  if (!fileName) return;
+
+  const htmlContent = editor.getHtml();
+  const cssContent = editor.getCss();
+  const fullHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>${fileName}</title>
+      <style>${cssContent}</style>
+    </head>
+    <body>${htmlContent}</body>
+    </html>
+  `;
+
+  // Inline all images as base64
+  const inlinedHtml = await inlineImagesInHtml(fullHTML);
+
+  // Create a blob and trigger download
+  const blob = new Blob([inlinedHtml], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${fileName}.html`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+const inlineImagesInHtml = async (html) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const images = doc.querySelectorAll("img");
+
+  const promises = Array.from(images).map(async (img) => {
+    const src = img.getAttribute("src");
+    if (src && !src.startsWith("data:")) {
+      try {
+        const response = await fetch(src);
+        const blob = await response.blob();
+        const base64 = await blobToBase64(blob);
+        img.setAttribute("src", base64);
+      } catch (err) {
+        console.warn("Failed to inline image:", src, err);
+      }
+    }
+  });
+
+  await Promise.all(promises);
+  return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+};
+
+const blobToBase64 = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 };
 
 
  
   return (
-    <div style={{ padding: '20px', maxWidth: '720px', margin: 'auto' }}>
-      <h2>Create Newsletter</h2>
+    <div style= {{display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+    width: '100%',
+    background: 'linear-gradient(135deg,rgba(255, 111, 145, 0.9), #b967c7)',
+    boxSizing: 'border-box',
+    padding: '30px',    
+  }}>
+    <div style={{ 
+      backgroundColor: '#ffffff',
+      padding: '30px',
+      maxWidth: '800px',
+      width: '100%',
+      borderRadius: '16px',
+      boxShadow: '0 0 30px rgba(0, 255, 255, 0.08)',
+      textAlign: 'center',}}>
+      <div style={{
+        background: 'radial-gradient(circle, #00f0ff, #0072ff)',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        color: 'transparent',
+        fontSize: '2.5rem',
+        fontWeight: 'bold',
+        marginBottom: '20px', 
+      }}>
+      <h2>Create Newsletter</h2> </div>
 
       {/*<textarea
         placeholder="Enter key takeaways..."
@@ -342,10 +426,16 @@ const handleExportPdf = async () => {
         style={{ marginBottom: '10px', padding: '10px', fontSize: '16px', width: '100%' }}
       />*/}
 
-      <div style={{ marginBottom: '20px' }}>
-  <h4>Newsletter Styling</h4>
+      <div style={{ marginBottom: '20px', color: '#000000',}}>
+  <h3 style={{
+    marginBottom: '20px',
+    background: 'linear-gradient(to right, #ff7f00,  #00ff00, #0000ff, #8b00ff)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    fontWeight: 'bold',
+  }}><i>Newsletter Styling</i></h3>
 
-  <label>
+  {/*<label style={{ fontSize: '18px', color: '#000000',}}>
     Background Color: 
     <input
       type="color"
@@ -355,7 +445,7 @@ const handleExportPdf = async () => {
     />
   </label>
 
-  <label style={{ marginLeft: '20px' }}>
+  <label style={{ marginLeft: '20px', fontSize: '18px', color: '#000000', }}>
     Text Color: 
     <input
       type="color"
@@ -365,7 +455,7 @@ const handleExportPdf = async () => {
     />
   </label>
 
-  <label style={{ marginLeft: '20px' }}>
+  <label style={{ marginLeft: '20px' , fontSize: '17px', color: '#000000',}}>
     Font Family: 
     <select
       value={fontFamily}
@@ -378,12 +468,12 @@ const handleExportPdf = async () => {
       <option value="Roboto">Roboto</option>
       <option value="Verdana">Verdana</option>
     </select>
-  </label>
+  </label> */} 
 </div>
 
 
       <div>
-  <label>How many news items?</label>
+  <label style={{ display: 'inline-block', marginRight: '10px', fontSize: '23px', color: '#000000',}}><strong>How many news items?</strong></label>
   <input
     type="number"
     min={1}
@@ -395,20 +485,21 @@ const handleExportPdf = async () => {
     }}
   style={{ margin: '10px 0', padding: '6px' }}
 />
-</div>
-
+<br/>
+<br/>
 {prompts.map((prompt, idx) => (
-  <div key={idx} style={{ width: '100%', marginBottom: '10px' }}>
+  <div key={idx} style={{display: 'flex', width: '100%', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center', gap: '12px',}}>
     <input
     type="text"
     value={prompt.text || ""}
     onChange={(e) => handlePromptChange(idx, 'text', e.target.value)}
     placeholder={`Enter prompt for news item ${idx + 1}`}
-    
+    style={{fontSize: '16px', padding: '8px', flexGrow: 1, minWidth: '200px',}}
   />
   <select
       value={prompt.font || "Arial"}
       onChange={(e) => handlePromptChange(idx, 'font', e.target.value)}
+      style={{ padding: '8px' }}
     >
       <option value="Arial">Arial</option>
       <option value="Georgia">Georgia</option>
@@ -431,10 +522,11 @@ const handleExportPdf = async () => {
       title="Text Color"
     />
   </div>
-))}
-      <div style={{ marginBottom: '10px' }}>
+))} <br/>
+
+      <div style={{ marginBottom: '10px' , fontSize: '23px', color: '#000000',}}>
         <label>
-          <strong>Select Tone:</strong>&nbsp;
+          <strong>Select Tone (Optional):</strong>&nbsp;
           <select
             value={tone}
             onChange={(e) => {
@@ -462,15 +554,17 @@ const handleExportPdf = async () => {
           style={{ padding: '8px', width: '100%', marginBottom: '10px' }}
         />
       )}
+<br/>
 
-
-     <div style={{ marginBottom: '20px' }}>
+     <div style={{ marginBottom: '20px', display: 'flex', width: '100%', flexWrap: 'wrap', alignItems: 'center', gap: '12px',justifyContent: 'center'}}>
         <button onClick={handleGenerate} style={btnStyle('#3498db')}>Generate</button>
     
         <button onClick={handleReset} style={btnStyle('#e74c3c')}>Reset</button>
         <button onClick={() => setIsEditorOpen(true)} style={btnStyle('#8e44ad')}>Open Editor</button>
       </div>
-
+    </div> 
+    
+     
      {/*  <input type="file" accept="image/*" onChange={handleImageUpload} />
       {image && (
         <>
@@ -489,227 +583,20 @@ const handleExportPdf = async () => {
     </button> 
   </> 
       )} */}
+
       {isEditorOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, backgroundColor: '#fff' }}>
-          <div style={{ textAlign: 'right', padding: '10px' }}>
-            <button onClick={() => { const toneBox = document.querySelector(".tone-options");
-                  if (toneBox) toneBox.remove();
-                  setIsEditorOpen(false);}} style={btnStyle('#e74c3c')}>Close Editor</button>
-          </div>
-
-          <div style={{ textAlign: 'left', padding: '10px' }}>
-            <button
-              onClick={handleExportPdf} style={btnStyle('#007bff')}>Export as PDF</button>
-          </div>
-
-          <div style={{ position: 'fixed', top: '62px', left: '300px', zIndex: 10001 }}>
-            <button
-              onClick={() => editorInstance?.runCommand('open-ai-image-generator')}
-              style={btnStyle('#0000ff')}
-            >
-              🪄 AI Image
-            </button>
-          </div>
-
-          <div style={{ position: 'fixed', top: '62px', left: '500px', zIndex: 10001 }}>
-            <button
-              onClick={() => editorInstance?.runCommand('clear-editor-command')}
-              style={btnStyle('#f39c12')}
-            >
-              🧹 Clear Editor
-            </button>
-          </div>
-
-
-          <div style={{ height: 'calc(100% - 50px)' }}>
-            <StudioEditor
-              options={{
-                plugins: [
-                  canvasAbsoluteMode
-                ],
-                project: {
-                  type: 'web',
-                  default: {
-                    pages: [{ name: 'Home', component: '' },],
-                  },
-                },
-              }}
-              onEditor={(editor) => {
-                console.log('Editor ready:', editor);
-                setEditorInstance(editor);
-                editorRef.current = editor;
-                setupAiImageCommand(editor);
-
-                const baseHtml = defaultNewsletterTemplate( `<div style="text-align:center;padding:40px;">
-                      <h2>Start building your newsletter!</h2>
-                    </div>`, 
-                    '');
-                editor.setComponents(baseHtml);
-
-                // ✅ Add Upload Image command
-                editor.Commands.add('upload-image', {
-                  run(editor) {
-                    const selected = editor.getSelected();
-                    if (!selected || selected.get('type') !== 'image') return;
-
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.style.display = 'none';
-
-                    input.onchange = () => {
-                      const file = input.files[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        selected.set('src', reader.result);
-                      };
-                      reader.readAsDataURL(file);
-                    };
-
-                    document.body.appendChild(input);
-                    input.click();
-                    document.body.removeChild(input);
-                  }
-                });
-
-                // ✅ Show tone selector when text block is selected
-                editor.on("component:selected", (selected) => {
-                  const existingBox = document.querySelector(".tone-options");
-                  if (existingBox) existingBox.remove();
-
-                  if (selected && selected.is("text")) {
-                    const el = document.createElement("div");
-                    el.className = "tone-options";
-                    el.style.position = "fixed";
-                    el.style.top = "80px";
-                    el.style.right = "20px";
-                    el.style.zIndex = "9999";
-                    el.style.background = "#fff";
-                    el.style.padding = "12px";
-                    el.style.border = "1px solid #ccc";
-                    el.style.borderRadius = "8px";
-                    el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-                    el.style.width = "220px";
-                    el.style.fontFamily = "sans-serif";
-
-                    el.innerHTML = `
-                      <label style="font-size:14px; font-weight:bold;">Tone</label>
-                      <select id="tone-select" style="width:100%; margin-top:6px; background: #aaa">
-                        <option value="formal">Formal</option>
-                        <option value="casual">Casual</option>
-                        <option value="professional">Professional</option>
-                        <option value="polite">Polite</option>
-                        <option value="friendly">Friendly</option>
-                        <option value="other">Other (Specify)</option>
-                      </select>
-                      <input type="text" id="custom-tone" placeholder="Enter custom tone..." style="display:none; margin-top:8px; width:100%;" />
-                      <button id="beautify-btn" style="margin-top:12px; width:100%; background:#ff007f">Beautify</button>
-                      <button id="remove-ui-btn" style="margin-top:6px; width:100%; background:#800808;">Close</button>
-                    `;
-
-                    document.body.appendChild(el);
-
-                    const toneSelect = document.getElementById("tone-select");
-                    const customToneInput = document.getElementById("custom-tone");
-                    const beautifyBtn = document.getElementById("beautify-btn");
-                    const closeBtn = document.getElementById("remove-ui-btn");
-
-                    toneSelect.addEventListener("change", () => {
-                      customToneInput.style.display = toneSelect.value === "other" ? "block" : "none";
-                    });
-
-                    beautifyBtn.addEventListener("click", async () => {
-                      const selected = editor.getSelected();
-                      if (!selected) return alert("Please select a block.");
-                      
-                      const content = selected.getEl()?.innerText?.trim();
-                      const toneToUse = toneSelect.value === "other" ? customToneInput.value.trim() : toneSelect.value;
-
-                      if (!content || content.split(" ").length < 3)
-                        return alert("Please select some meaningful text.");
-
-                      if (!toneToUse) return alert("Please specify a tone.");
-
-                      const res = await fetch(`${import.meta.env.VITE_FLASK_API}/api/beautify`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: content, tone: toneToUse })
-                      });
-
-                      const json = await res.json();
-                      if (json.beautified) {
-                        selected.set("components", json.beautified);
-                        selected.addAttributes({ "data-tone": toneToUse });
-                      } else {
-                        alert("Failed to beautify content.");
-                      }
-                    });
-
-                    closeBtn.addEventListener("click", () => {
-                      el.remove();
-                    });
-                  }
-
-                  // ✅ Add Upload button to the image block’s toolbar
-                  if (selected && selected.get('type') === 'image') {
-                    const toolbar = selected.get('toolbar') || [];
-
-                    const alreadyExists = toolbar.some(btn => btn.command === 'upload-image');
-                    if (!alreadyExists) {
-                      toolbar.unshift({
-                        attributes: { title: 'Upload Image' },
-                        command: 'upload-image',
-                        label: '📷 Upload Image',
-                      });
-                      selected.set('toolbar', toolbar);
-                    }
-                  }
-                });
-
-                // ✅ Add Upload Image to top options panel
-                editor.Panels.addButton('options', {
-                  id: 'upload-image-global',
-                  className: 'fa fa-image',
-                  label: 'Upload Image',
-                  attributes: { title: 'Upload an image to selected image block' },
-                  command: 'upload-image',
-                });
-
-                // ✅ Add clear editor command
-                editor.Commands.add('clear-editor-command', {
-                  run(editor) {
-                    if (confirm('Are you sure you want to clear the entire editor?')) {
-                      editor.DomComponents.clear();
-                      editor.Css.clear();
-                      editor.AssetManager.getAll().reset();
-                      editor.setComponents('<div style="padding: 20px; text-align: center;"></div>');
-                      editor.StyleManager.getSectors().reset();
-                    }
-                  }
-                });
-
-                // ✅ Add Clear Editor button to top panel
-                if (!editor.Panels.getPanel('top-panel')) {
-                  editor.Panels.addPanel({ id: 'top-panel', buttons: [] });
-                }
-
-                if (!editor.Panels.getButton('top-panel', 'clear-editor')) {
-                  editor.Panels.addButton('top-panel', {
-                    id: 'clear-editor',
-                    className: 'fa fa-trash',
-                    label: 'Clear Editor',
-                    attributes: { title: 'Click to clear all content' },
-                    command: 'clear-editor-command',
-                  });
-                }
-              }}
-            />
-
-          </div>
-        </div>
-      )}
-    </div>
+  <StudioEditor
+  editorRef={editorRef}
+  setEditorInstance={setEditorInstance}
+  setIsEditorOpen={setIsEditorOpen}
+  handleExportHTML={handleExportHTML}
+  setupAiImageCommand={setupAiImageCommand}
+  btnStyle={btnStyle}
+  defaultNewsletterTemplate={defaultNewsletterTemplate}
+/>
+)}
+  </div>
+  </div>
   );
 };
 

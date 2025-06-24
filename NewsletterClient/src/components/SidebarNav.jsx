@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const SidebarNav = () => {
+const SidebarNav = ({ onCreateClick }) => {
   const navigate = useNavigate();
 
   const menuItems = [
@@ -19,7 +19,13 @@ const SidebarNav = () => {
         {menuItems.map(({ path, label }) => (
           <li
             key={path}
-            onClick={() => navigate(path)}
+            onClick={() => {
+              if (label === 'Create NEW' && onCreateClick) {
+                onCreateClick(); // Show modal instead of navigating
+              } else {
+                navigate(path);
+              }
+            }}
             style={{
               padding: '10px 0',
               cursor: 'pointer',

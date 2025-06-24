@@ -5,3 +5,4 @@ uploads/
 bcrypt-test.js
 createAdminUser.js
 update-password.js
+generated-pdf

@@ -1,9 +1,13 @@
-from flask import Flask, request, jsonify, send_from_directory,send_file,jsonify
+from flask import Flask, request, jsonify, send_from_directory,send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os, jwt, datetime, requests
 from werkzeug.utils import secure_filename
-import base64, uuid, re, pdfkit
+import base64, uuid, re
+import asyncio
+from playwright.async_api import async_playwright
+import tempfile
+from bs4 import BeautifulSoup
 
 load_dotenv()
 
@@ -27,9 +31,6 @@ def generate_token(email):
     }
     return jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
-logo_path = os.path.join(os.path.dirname(__file__), "../NewsletterClient/public/gapblueLogo.png")
-with open(logo_path, "rb") as image_file:
-    LOGO_BASE64 = "data:image/png;base64," + base64.b64encode(image_file.read()).decode('utf-8')
 
 @app.route("/api/generate-newsletter", methods=["POST"])
 def generate_newsletter():
@@ -288,6 +289,23 @@ def upload_image():
 def serve_image(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+
+def inline_images(html_content):
+    soup = BeautifulSoup(html_content, "html.parser")
+    for img in soup.find_all("img"):
+        src = img.get("src")
+        if src and not src.startswith("data:"):
+            try:
+                local_path = os.path.abspath(os.path.join("../NewsletterClient/public", src.lstrip("/")))
+                with open(local_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                    ext = os.path.splitext(local_path)[1][1:]  # 'png', 'jpg'
+                    img['src'] = f"data:image/{ext};base64,{encoded}"
+            except Exception as e:
+                print(f"[WARN] Couldn't inline image: {src} — {e}")
+    return str(soup)
+
+
 @app.route("/export", methods=["POST"])
 def export_pdf():
     data = request.get_json()
@@ -297,40 +315,57 @@ def export_pdf():
     if not html_content:
         return jsonify({"error": "Missing HTML content"}), 400
 
-    # Remove markdown-style backticks if present
-    html_content = re.sub(r"```(html)?", "", html_content).strip()
+    html_content = inline_images(html_content)
+    html_content = re.sub(r'</?(html|head|body)[^>]*>', '', html_content, flags=re.IGNORECASE).strip()
 
-    # ✅ Replace logo path with base64-encoded string
-    try:
-        with open("NewsletterClient/public/gapblueLogo.png", "rb") as image_file:
-            logo_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-            LOGO_BASE64 = f"data:image/png;base64,{logo_base64}"
-            html_content = html_content.replace("/gapblueLogo.png", LOGO_BASE64)
-    except FileNotFoundError:
-        print("[WARNING] Logo image not found. Skipping base64 replacement.")
-
-    # Sanitize and construct output PDF path
     safe_filename = re.sub(r'[^\w\-_.]', '_', filename) + ".pdf"
     pdf_path = os.path.join("generated-pdf", safe_filename)
     os.makedirs("generated-pdf", exist_ok=True)
 
-    # Generate PDF using wkhtmltopdf on Windows
+    async def generate_pdf():
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+            html_shell = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="UTF-8">
+            <style>
+                @page {{
+                    size: A4;
+                    margin: 20mm;
+                }}
+                body {{
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding-top: 40px;
+                    color: #1a1a1a;
+                }}
+                img {{
+                    max-width: 100%;
+                    height: auto;
+                }}
+                * {{
+                    box-sizing: border-box;
+                }}
+            </style>
+            </head>
+            <body>
+            {html_content}
+            </body>
+            </html>
+            """
+            await page.set_content(html_shell, wait_until="networkidle")
+            await page.pdf(path=pdf_path, format="A4")
+            await browser.close()
+
     try:
-        config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
-        pdfkit.from_string(
-            html_content,
-            pdf_path,
-            configuration=config,
-            options={
-                "enable-local-file-access": "",
-                "load-error-handling": "ignore",
-                "load-media-error-handling": "ignore"
-            }
-        )
+        asyncio.run(generate_pdf())
         return send_file(pdf_path, as_attachment=True)
     except Exception as e:
         print(f"[ERROR] PDF generation failed: {e}")
-        return jsonify({"error": f"Failed to generate PDF: {str(e)}"}), 500
+        return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
